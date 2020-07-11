@@ -7,7 +7,7 @@ Last edited 10-July-2020
 ## Installation
 
 * Download the latest batl_X.XX.X.tar.gz 
-* Install [R])(https://www.r-project.org/) version 3.6.0 or greater
+* Install [R](https://www.r-project.org/) version 3.6.0 or greater
 * (Optional:) Install [RStudio](https://rstudio.com/)
 * In the R/RStudio console:
   * ``install.packages("/path_to_file/batl_X.XX.X.tar.gz", repos = NULL, type="source", dependencies = TRUE)``
