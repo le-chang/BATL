@@ -1,8 +1,8 @@
 # BATL
 Bayesian annotations for targeted lipidomics
 
-Last edited 10-July-2020
-
+Last edited 15-July-2020
+- Check the R package NEWS section for changes.
 
 ## Installation
 
