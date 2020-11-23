@@ -1,0 +1,316 @@
+---
+title: "Using BATL for SRM peak identification"
+subtitle: "BCH 8110 Basecamp"
+author: "Justin Chitpin"
+date: "November 23, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/home/le/github_repo/BATL/")
+```
+
+
+## Downloading and installing everything required to use BATL
+
+### Install packages required to install BATL
+
+BATL uses functions from packages written by some other R developers. For BATL
+to install correctly, these packages must be installed prior to BATL. The
+following lines of code check if the 7 listed packages need to be installed on
+your machine, and installs them for you if they are missing.
+
+```{r, echo = TRUE, warning = FALSE, message = FALSE, error = FALSE}
+## Install packages required for BATL if not already installed
+packages_for_batl <- c("data.table", "doFuture", "future", "foreach", "igraph", "openxlsx", "progressr")
+download_packages <- packages_for_batl[!(packages_for_batl %in% installed.packages()[, "Package"])]
+if (length(download_packages) != 0) {
+    install.packages(download_packages, repos = "http://cran.us.r-project.org")
+}
+```
+
+Don't worry if you get the error:
+`## Error in readRDS(file) : error reading from connection`.
+This appears to be an error with the function `installed.packages()`
+
+### Names of downloaded files for this workshop
+
+These variables store the name of the BATL package, the BATL model file, and the
+SRM peak file that you will be labelling. This is often better than manually
+typing a long string of characters. Furthermore, if you need to change the SRM
+file, for example, you can just change the variable name below.
+
+```{r}
+batl_package <- "batl_2.05.2.tar.gz"
+batl_model <- "model_sphingolipid_v10.txt"
+srm_file <- "BCH8110_20200909_COVID19_Lipophenomics_SL_Longitudinal_JC.txt"
+lexicon <- "LipidLexiconforBasecamp2020.xlsx"
+```
+
+The following lines of code contain if statements. If the condition written in
+the parentheses is true, then the code indented inside is evaluated. These if
+statements check if our files of interest are contained in our working
+directory. 
+
+```{r}
+if (!(batl_package %in% list.files())) {
+    stop(paste(batl_package, "is not present in the working directory."))
+}
+if (!(batl_model %in% list.files())) {
+    stop(paste(batl_model, "is not present in the working directory."))
+}
+if (!(batl_model %in% list.files())) {
+    stop(paste(batl_model, "is not present in the working directory."))
+}
+if (!(lexicon %in% list.files())) {
+    stop(paste(lexicon, "is not present in the working directory."))
+}
+```
+
+### Installing BATL package
+
+Installing the BATL package contained in our working directory if BATL has not
+been installed already.
+
+```{r}
+if (batl_package %in% list.files()) {
+    to_download <- "batl"[!("batl" %in% installed.packages()[, "Package"])]
+    if (length(to_download) != 0) {
+        install.packages(batl_package, repos = NULL, type = "source", dependencies = TRUE)
+    }
+}
+```
+
+## Introduction to using BATL
+
+As a reminder, it is one thing to download an R package and it is another thing
+to load it in order to use these package functions. The `library()` command
+loads the package; double quotes around the package name are optional.
+
+```{r, message = FALSE, warning = FALSE}
+## Load libraries
+library("batl")
+library(data.table) # also works! (this is called non-standard evaluation btw)
+library(openxlsx)
+```
+
+### Inspecting the model file
+
+The following BATL function opens the BATL model file. The variable
+`imported_model` is actually a list containing 2 objects. The first one is a
+table containing the model information. The second one is a vector of meta
+information for the model. 
+
+```{r}
+imported_model <- nb_import_model(model_name = batl_model)
+```
+
+
+You can use the `View()` command to open these variables up in RStudio as a
+spreadsheet. Using `View()` is often easier than switching between RStudio and
+your spreadsheets in Excel.
+
+```{r, eval = FALSE}
+View(imported_model$Model) # contains our lipid identities and model parameters
+View(imported_model$Meta_information) # contains some relevant info
+```
+
+### Inspecting the SRM peak file
+
+To view our SRM peak file, first load it into R as a variable. The peak file can
+be imported into R using the `fread()` function which is part of the
+`data.table` package. The first row of the file is treated as the column names
+and `sep = "\t"` tells the function to expect tab-delimited values.
+
+```{r}
+imported_srm <- fread(srm_file, header = TRUE, sep = "\t")
+```
+
+Once again, you can use the `View()` command to open the peak file in RStudio.
+Use the left and right arrows at the top of the panel to move across the
+columns. This is one of the downsides of viewing very wide spreadsheets in R.
+
+```{r, eval = FALSE}
+View(imported_srm)
+```
+
+### Opening up the BATL documentation
+
+Enter the following lines in the console to open up the documentation for the
+BATL package. Vignettes are detailed, minimal-working examples that teach the
+user how to use the package functions on sample data. You can replace `batl`
+with the name of any other package to look up that package documentation. This
+is very handy when learning how to use new functions.
+
+```{r, eval = FALSE}
+## Opening up documentation and vignette for the BATL package
+help(package = "batl")
+vignette(package = "batl", topic = "batl-Introduction")
+```
+
+### Using BATL
+
+These next lines of code might seem strange but they are all of the parameters
+we need to run the subsequent BATL functions.
+
+```{r}
+## Save name of the SRM peak file once we've labelled it
+savenames <- paste0(gsub(".txt","", srm_file), "_labelled.txt")
+
+## Variables for the artifact/isotope annotating function
+lipid_category <- "SP"   # enable sphingolipid-specific artifact annotations
+retention_tolerance <- 2 # number of significant figures after decimal place
+machine_tolerance <- 0.5 # Q1 m/z tolerance
+
+## Variables for the peak labelling function
+qstandard <- "C16-D31 Ceramide" # internal standard
+qstandard_col <- "Component Name" # column name where the qstandard is located
+subtract_constant <- 100 # if subtracted RT is used; same value as training set
+exceptions <- c("ADC", "TIC") # rows to avoid barcoding based on Mass Info column
+
+```
+
+The `deartifact_peaks` function loads the srm peak file. Lipids within the
+sphingolipid category $SP$ may dehydrate (once or twice), deglycosylate (one or
+more times), or dimerize in-source. These artifacts do not occur for other types
+of lipids lacking hydroxyl groups or 6-carbon sugars. Isotopes, on the other
+hand, may be present for any type of lipid. The `exceptions` parameter is
+required because some rows in the SRM peak file are not actually SRM peaks! Rows
+under the Mass.Info column containing the keywords TIC (total ion chromatogram)
+and ADC (analog digital converter) are sometimes output by the peak picking
+software MultiQuant. Because these rows do not reflect SRM peaks, they are
+excluded from the annotation function.
+
+```{r}
+deartifacted_files <- deartifact_peaks(
+    filenames = srm_file,
+    category = lipid_category,
+    Q1_tolerance = machine_tolerance,
+    retention_tolerance = retention_tolerance,
+    exceptions = exceptions)
+```
+
+Note how the variable returned is a list. This is because `srm_file` may be a
+vector of SRM peak files. As we only ran a single SRM file into the function,
+the variable returned is a list containing a single table. We can view the table
+and check any artifact or isotope annotations in the last column called
+`Insource_annotation`.
+
+```{r, eval = FALSE}
+View(deartifacted_files[[1]])
+```
+
+As you can see, the output of this function is the exact same SRM peak file that
+we input. The only difference is the additional column called
+`Insource_annotation`.  
+
+Most of the rows under the `Insource_annotation` column are blank or NA. Instead
+of manually scrolling through the table in RStudio, we can use the following
+line of code to subset the table to only include rows with isotopes and
+artifacts.
+
+```{r, eval = FALSE}
+View(deartifacted_files[[1]][!(is.na(Insource_annotation))])
+```
+
+Because the peak labelling function inputs the name of the SRM peak file, we
+need to temporarily export the newly annotated SRM peak file. The following for
+loop will export all of SRM peak files using the `savenames` variable we created
+above. In our case, we only have one file to export but this loop is handy when
+exporting multiple files at once.
+
+```{r}
+for (i in seq_along(deartifacted_files)) {
+    deartifact_export_peaks(
+        file = deartifacted_files[[i]], filename = savenames[i])
+}
+```
+
+The `nb_label_peaks` function assigns lipid labels to our SRM peak file. Some of
+the features such as Area, Height, Relative.RT, and Subtracted.RT are normalized
+to the corresponding feature value of the internal standard within the same
+sample. For that reason, we need to specify `qstandard` and `qstandard_col`.
+`subtract_constant` is necessary to avoid negative values because the likelihood
+cannot be estimated for the log-normal distributed (the logarithm of a negative
+number is undefined).
+
+```{r}
+labelled_files <- nb_label_peaks(
+    filenames = savenames, # the srm peak file with insource annotations
+    model_filename = batl_model, # BATL model file
+    qstandard = qstandard, # internal standard
+    qstandard_col = qstandard_col, # column name where the internal standard is found
+    subtract_constant = subtract_constant, # for the subtracted RT variable
+    exceptions = exceptions)
+```
+
+The following for loop will export all of SRM peak files using the `savenames`
+variable we created above. In our case, we only have one file to export but this
+loop is handy when exporting multiple files at once.
+
+```{r}
+## Export
+for (i in seq_along(labelled_files)) {
+    nb_export_labelled_file(
+        labelled_file = labelled_files[[i]], filename = savenames[i])
+}
+```
+
+You could either view the labelled SRM peak file in RStudio or in Excel.
+Note how the last column `Barcode_MWBM` contains the assigned lipid identities
+for each peak. A row with no peak or a row with a peak that has no matching
+lipid identities in the training set will be assigned an NA/blank barcode entry.
+A peak that matched one or more lipids in the training set based on transition
+but was not assigned a lipid identity is assigned the `UNASSIGNED` barcode.
+
+```{r, eval = FALSE}
+View(labelled_files[[1]])
+```
+
+#### Exercise 1
+
+The "openxlsx" package allows you to open and export xlsx spreadsheets. Using
+the help() function, can you figure out which openxlsx function writes a table
+in R to an xlsx spreadsheet?
+
+#### Exercise 2
+I've stated that the `deartifact_peaks` and `nb__label_peaks` can accept a
+vector of multiple SRM peak files. Can you modify the code above to deartifact
+and label multiple SRM peak files? (Hint: although you only have a single SRM
+peak file, you could create a vector of that file.)
+
+### "VLOOKUP" in R
+
+Each barcode under the `Barcode_MWBM` column represents a unique lipid identity.
+These barcode-lipid identities are stored in the Excel spreadsheet saved in the
+`lexicon` variable. While you could use VLOOKUP in Excel to merge these lipid
+identities to the SRM peak file, you could also do this very easily in R.
+
+```{r}
+lexicon_table <- read.xlsx(xlsxFile = lexicon)
+lexicon_table <- lexicon_table[, c("Barcode", "MolecularID")]
+```
+
+The `merge()` function is the simplest function to merge two tables in R. The
+merging is based on the column names specified in `by.x` and `by.y`. In other
+words, if the same Barcode is found in both tables, the MolecularID value in
+table `y` will be appended to the corresponding row in table `x`. The 
+`all.x = TRUE` parameter will append an NA value if there is no matching
+Barcode between both tables.
+
+```{r}
+merged_table <- merge(
+    x = labelled_files[[1]],
+    y = lexicon_table,
+    by.x = "Barcode_MWBM",
+    by.y = "Barcode",
+    all.x = TRUE)
+```
+
+Exporting the labelled SRM peak file for the last time!
+
+```{r}
+nb_export_labelled_file(labelled_file = merged_table, filename = savenames)
+```
+
