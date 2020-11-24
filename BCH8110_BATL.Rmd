@@ -124,7 +124,7 @@ be imported into R using the `fread()` function which is part of the
 and `sep = "\t"` tells the function to expect tab-delimited values.
 
 ```{r}
-imported_srm <- fread(srm_file, header = TRUE, sep = "\t")
+imported_srm <- data.table::fread(srm_file, header = TRUE, sep = "\t")
 ```
 
 Once again, you can use the `View()` command to open the peak file in RStudio.
